@@ -1,5 +1,5 @@
 from Core import Room
-from Events import Event, CustomEvent, Conditional, Manipulator, Break
+from Events import Event, CustomEvent, Conditional, Manipulator, Break, Lock
 from Events import Chain, NamedEvent, Prompt, PromptCarousel, Menu, Teleporter
 import re
 
@@ -50,6 +50,7 @@ class Engine:
         self.flags = {}
         self.events = {}
         self.last_input = ""
+        self.prompt = False
 
     def print(self, *args):
         print(*args)
@@ -67,7 +68,6 @@ class Engine:
             self.events_handler(event_name)
 
     def handle_event(self, wrapper):
-        result = False
         event = wrapper.event
         if isinstance(wrapper.next, Room):
             self.handle_event(self.currentRoom.events["roomLeave"])
@@ -93,13 +93,21 @@ class Engine:
             self.print(prompt)
         elif isinstance(event, Menu):
             self.show_menu(event)
-            result = True
+            self.prompt = True
         elif isinstance(event, Teleporter):
             self.handle_event(event.event)
             self.change_room(event.room, True)
+        elif isinstance(event, Lock):
+            if self.flags[event.flag] is False:
+                self.handle_event(event.success)
+                self.handle_event(event.final)
+            elif self.flags[event.flag] is True:
+                self.handle_event(event.failure)
+                self.handle_event(event.final)
+                self.prompt = True
+                return
         if isinstance(wrapper.next, Room):
             self.change_room(wrapper.next)
-        return result
 
     def change_room(self, room, trigger_leave=False):
         if trigger_leave:
@@ -120,8 +128,8 @@ class Engine:
         _map = self.currentRoom.map
         if _next in _map.get_all():
             self.handle_event(_map.get(_next))
+            self.prompt = True
             found = True
-            Break
         if not found:
             self.print(f"No such location: '{_next}'.")
 
@@ -157,10 +165,10 @@ class Engine:
         result = compass.get(_next)
         if result is None:
             self.print("You can't go there!")
-            return True
+            self.prompt = True
         elif result is False:
             self.print(f"No such direction: '{_next}'.")
-            return True
+            self.prompt = True
         else:
             self.handle_event(compass.get(_next))
 
@@ -179,12 +187,13 @@ class Engine:
                     break
             if not found:
                 self.print(f"No such command: '{_next}'.")
-        return True
+        self.prompt = True
 
     def command_look(self, _next):
         if _next in ("around", ""):
             self.print("You look around.")
-            return True
+            self.prompt = True
+            return
         triggers = ["on the", "at the", "at", "on"]
         for trigger in triggers:
             if _next.startswith(trigger):
@@ -195,7 +204,7 @@ class Engine:
         else:
             self.print(f"You look at the {_next}.")
             self.handle_event(interactive.description)
-            return True
+            self.prompt = True
 
     def command_map(self, _next=""):
         room = self.currentRoom
@@ -215,18 +224,18 @@ class Engine:
             event = room.interactives.get(_next).events["activate"]
             if isinstance(event, Event):
                 self.handle_event(event)
-                return True
+                self.prompt = True
         else:
             self.print(f"No such interactive: '{_next}'.")
 
     def show_prompt(self):
+        self.prompt = False
         self.handle_event(self.currentRoom.description)
         if self.currentRoom.show_map:
             self.command_map()
         self.handle_input()
 
     def handle_input(self):
-        show_prompt = False
         while True:
             user_input = input().lower().strip()
             user_input = re.sub(" +", " ", user_input)
@@ -244,15 +253,16 @@ class Engine:
             if len(words) > 1:
                 _next = words[1]
             if keyword in self.keywords:
-                show_prompt = self.keywords[keyword](_next)
+                self.keywords[keyword](_next)
                 break
             else:
                 self.print(self.prompts["inputError"])
-        if show_prompt:
+        if self.prompt:
             self.print()
             self.show_prompt()
         else:
             self.handle_input()
 
     def start(self):
+        self.print(self.prompts["start"])
         self.show_prompt()

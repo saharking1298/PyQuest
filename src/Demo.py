@@ -1,5 +1,5 @@
 from Core import Room, Interactive
-from Events import Conditional, Manipulator, Chain, Menu, Break, Teleporter, Random
+from Events import Conditional, Manipulator, Chain, Menu, Break, Teleporter, Random, Lock
 from Engine import Engine
 
 
@@ -78,6 +78,10 @@ balcony = Room(
     "A coffee table and two chairs are turning to a nice view of the garden.\n"
     "You can enter back to the hallway."
 )
+attic = Room(
+    "This is the attic. It is a small square space fulled with some interesting stuff.\n"
+    "You can go down to the 2nd floor hallway."
+)
 
 # Set up room connections
 outside.compass.set("in", living_room, prompts["house.outside-house"])
@@ -118,8 +122,17 @@ kitchen.map.set("out", living_room, "You leave the kitchen and return to the liv
 balcony.compass.set("in", hallway, prompts["house.balcony-hallway"])
 balcony.map.set("house", hallway, prompts["house.balcony-hallway"])
 balcony.compass.set("down", garden, prompts["house.balcony-garden"], hidden=True)
+attic.compass.set("down", hallway, "You open a panel in the floor and climb down to the 2nd floor hallway.")
 
-
+hallway.compass.set(
+    "up",
+    attic,
+    Lock(
+        "rooms.attic.isLocked",
+        "You climb to the attic through a sliding panel in the celling.",
+        "The attic is currently locked!",
+    )
+)
 # Defining interactives
 couch = Interactive(
     "couch",
@@ -149,11 +162,11 @@ tv = Interactive(
     Menu(
         Chain(
             Conditional(
-                "inters.tv.isWorking",
+                "inters.tv.on",
                 {
                     "true": "The TV is already on.",
                     "false": Manipulator(
-                        {"inters.tv.isWorking": True},
+                        {"inters.tv.on": True},
                         "You open the TV."
                     )
                 }
@@ -248,16 +261,35 @@ bed = Interactive(
     "You lose your consciousness and find yourself in a dream.\n"
     "Unfortunately, this section of the game hasn't been written yet!"
 )
+lever = Interactive(
+    "lever",
+    "This lever can be used to lock/unlock the door leading to the attic.",
+    Conditional(
+        "rooms.attic.isLocked",
+        {
+            "true": Manipulator(
+                {"rooms.attic.isLocked": False},
+                "You pull the lever up and the panel to the attic opens."
+            ),
+            "false": Manipulator(
+                {"rooms.attic.isLocked": True},
+                "You pull the lever down and the panel to the attic closes."
+            ),
+        }
+    )
+)
 
 # Placing interactives
 living_room.interactives.add(couch, tv)
 guest_room.interactives.add(guest_couch)
 bedroom.interactives.add(laptop, bed, painting)
 garden.interactives.add(trampoline)
+hallway.interactives.add(lever)
 
 flags = {
     "player.isSitting": False,
-    "inters.tv.isWorking": False,
+    "inters.tv.on": False,
+    "rooms.attic.isLocked": True,
     "inters.trampoline.rand": 0,
     "flags.fbi": False,
     "fillers.fbi": "",
@@ -280,11 +312,11 @@ events = {
     "room.leave": Chain(
         "@inters.couch.getUp",
     ),
-    "inters.tv.turnOff": Manipulator({"inters.tv.isWorking": False})
+    "inters.tv.turnOff": Manipulator({"inters.tv.on": False})
 }
 
 # Setting engine
-engine = Engine(handler, outside)
+engine = Engine(handler, hallway)
 engine.events = events
 engine.flags = flags
 engine.start()

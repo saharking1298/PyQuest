@@ -195,3 +195,11 @@ class Random:
         else:
             self.min = _min
             self.max = _max
+
+
+class Lock:
+    def __init__(self, flag, success=None, failure=None, final=None):
+        self.success = Event(success)
+        self.failure = Event(failure)
+        self.final = Event(final)
+        self.flag = flag
