@@ -3,7 +3,7 @@ import re
 
 
 class Event:
-    def __init__(self, _next=None, event=None, **config):
+    def __init__(self, event=None, _next=None, **config):
         self.next = _next
         if type(event) == str:
             if event.startswith("$"):
@@ -28,11 +28,17 @@ class NamedEvent:
         self.name = name
 
 
+class Teleporter:
+    def __init__(self, room, event=None):
+        self.room = room
+        self.event = Event(event)
+
+
 class Chain:
     def __init__(self, *args):
         args = list(args)
         for i in range(len(args)):
-            args[i] = Event(event=args[i])
+            args[i] = Event(args[i])
         self.events = args
 
 
@@ -42,7 +48,7 @@ class Conditional:
         self.options = {}
         if type(options) == dict:
             for (name, value) in options.items():
-                self.options[name] = Event(event=value)
+                self.options[name] = Event(value)
         else:
             self.options = {}
 
@@ -56,9 +62,9 @@ class Conditional:
         string = ""
         # Options: n, <>=n, 'str'
         for (name, value) in self.options.items():
-            if name.startswith("!="):
+            if name.startswith("!"):
                 not_equal = True
-                name = name.split("!=", 1)[1]
+                name = name.split("!", 1)[1]
                 if number.match(name) is not None:
                     if int(name) != flag_value:
                         return value
@@ -97,13 +103,16 @@ class Conditional:
 
 
 class Manipulator:
-    def __init__(self, event, flag, manipulator):
-        self.event = Event(event=event)
-        self.flag = flag
-        self.manipulator = manipulator
+    def __init__(self, manipulators, event=None):
+        self.event = Event(event)
+        self.manipulators = {}
+        if type(manipulators) == dict:
+            self.manipulators = manipulators
 
-    def manipulate(self, flag_value):
-        manipulator = self.manipulator
+    def manipulate(self, flag, flag_value):
+        manipulator = self.manipulators[flag]
+        if isinstance(manipulator, Random):
+            manipulator = random.randint(manipulator.min, manipulator.max)
         if type(manipulator) != str:
             return manipulator
 
@@ -166,13 +175,23 @@ class PromptCarousel:
 
 class Break:
     def __init__(self, event=None):
-        self.event = Event(event=event)
+        self.event = Event(event)
 
 
 class Menu:
     def __init__(self, starter, options, repeat=False):
-        self.starter = Event(event=starter)
+        self.starter = Event(starter)
         self.repeat = repeat
         self.options = {}
         for (name, value) in options.items():
-            self.options[name] = Event(event=value)
+            self.options[name] = Event(value)
+
+
+class Random:
+    def __init__(self, _min, _max=None):
+        if _max is None:
+            self.min = 0
+            self.max = _min
+        else:
+            self.min = _min
+            self.max = _max

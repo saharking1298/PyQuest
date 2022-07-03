@@ -12,15 +12,15 @@ class Interactive:
         if description == "":
             description = "Nothing out of the ordinary."
         self.name = name
-        self.description = Event(event=description)
+        self.description = Event(description)
         self.hidden = hidden
         self.events = {
-            "lookAt": Event(event=look),
-            "activate": Event(event=activate)
+            "lookAt": Event(look),
+            "activate": Event(activate)
         }
 
     def set(self, name, value):
-        self.events[name] = Event(event=value)
+        self.events[name] = Event(value)
 
 
 class Room:
@@ -47,7 +47,7 @@ class Room:
             direction = direction.lower().strip()
             for item in self.data:
                 if item == direction:
-                    self.data[item] = Event(destination, event, hidden=hidden)
+                    self.data[item] = Event(event, destination, hidden=hidden)
                     return
             raise DirectionError("Undefined direction: " + direction)
 
@@ -83,7 +83,7 @@ class Room:
             if destination is None:
                 del self.data[location]
             else:
-                self.data[location] = Event(destination, event, hidden=hidden)
+                self.data[location] = Event(event, destination, hidden=hidden)
 
         def get(self, location):
             if location in self.data:
@@ -106,14 +106,15 @@ class Room:
         def __len__(self):
             return len(self.get_all(prompt=True))
 
-        def add(self, interactive):
-            added = False
-            for i in range(len(self.data)):
-                if self.data[i].name == interactive.name:
-                    self.data[i] = interactive
-                    added = True
-            if not added:
-                self.data.append(interactive)
+        def add(self, *interactives):
+            for interactive in interactives:
+                added = False
+                for i in range(len(self.data)):
+                    if self.data[i].name == interactive.name:
+                        self.data[i] = interactive
+                        added = True
+                if not added:
+                    self.data.append(interactive)
 
         def get(self, name):
             for interactive in self.data:
@@ -152,13 +153,13 @@ class Room:
             return result
 
     def __init__(self, description, enter=None, leave=None, show_map=False):
-        self.description = Event(event=description)
+        self.description = Event(description)
         self.compass = Room.Compass()
         self.map = Room.Map()
         self.interactives = Room.Interactives()
         self.items = Room.Items()
         self.show_map = show_map
         self.events = {
-            "roomEnter": Event(event=enter),
-            "roomLeave": Event(event=leave),
+            "roomEnter": Event(enter),
+            "roomLeave": Event(leave),
         }

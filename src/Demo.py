@@ -1,5 +1,5 @@
 from Core import Room, Interactive
-from Events import Conditional, Manipulator, Chain, Menu, Break
+from Events import Conditional, Manipulator, Chain, Menu, Break, Teleporter, Random
 from Engine import Engine
 
 
@@ -8,7 +8,6 @@ def handler(event):
     if event == "game.quit":
         engine.print("Game over!")
         exit(0)
-
 
 
 prompts = {
@@ -36,7 +35,8 @@ living_room = Room(
     "A couch stands in front of a coffee table and a 50 inch television.\n" 
     "You can enter the kitchen, the guest room and the garden.\n" 
     "You can also take the stairs and go up to the second floor, "
-    "or leave the house and go out."
+    "or leave the house and go out.",
+    leave="@room.leave"
 )
 garden = Room(
     "The garden is breathtaking, with green grass and flowers all around.\n"
@@ -52,7 +52,8 @@ kitchen = Room(
 guest_room = Room(
     "This is a usual guest room - with a couch, a bed and a mini bar.\n"
     "When you have guests overnight they stay here.\n"
-    "You can go out to the living room."
+    "You can go out to the living room.",
+    leave="@room.leave"
 )
 
 # 2nd floor
@@ -127,11 +128,18 @@ couch = Interactive(
         "player.isSitting",
         {
             "true": "@inters.couch.getUp",
-            "false": Manipulator(
-                "You sit on the couch.",
-                "player.isSitting",
-                True
-            )
+            "false": "@inters.couch.sit"
+        }
+    )
+)
+guest_couch = Interactive(
+    "couch",
+    "This is the guest couch. The sofa in the living room is much better!",
+    Conditional(
+        "player.isSitting",
+        {
+            "true": "@inters.couch.getUp",
+            "false": "@inters.couch.sit"
         }
     )
 )
@@ -145,9 +153,8 @@ tv = Interactive(
                 {
                     "true": "The TV is already on.",
                     "false": Manipulator(
-                        "You open the TV.",
-                        "inters.tv.isWorking",
-                        True
+                        {"inters.tv.isWorking": True},
+                        "You open the TV."
                     )
                 }
             ),
@@ -179,7 +186,6 @@ tv = Interactive(
         True
     )
 )
-
 laptop = Interactive(
     "laptop",
     "This is a premium Lenovo model, with intel core i5 and a nice 15.4 inch display.",
@@ -192,16 +198,12 @@ laptop = Interactive(
                 "Hack into the FBI {fillers.fbi}": Conditional(
                     "flags.fbi",
                     {
-                        "false": Chain(
-                            Manipulator(
-                                "You spend several hours hacking into the FBI.\n"
-                                "You do it! You download some data from their database to your computer.\n"
-                                "You suddenly hear an aggressive knock on the house front door.\n"
-                                "Wonder who it might be?",
-                                "flags.fbi",
-                                True
-                            ),
-                            Manipulator(None, "fillers.fbi", "'(again)'")
+                        "false": Manipulator(
+                            {"flags.fbi": True, "fillers.fbi": "'(again)'"},
+                            "You spend several hours hacking into the FBI.\n"
+                            "You do it! You download some data from their database to your computer.\n"
+                            "You suddenly hear an aggressive knock on the house front door.\n"
+                            "Wonder who it might be?",
                         ),
                         "true": "You hack into the FBI again, but this time you already know how to do it.\n"
                                 "It takes you much shorter period of time."
@@ -213,15 +215,50 @@ laptop = Interactive(
         )
     )
 )
+trampoline = Interactive(
+    "trampoline",
+    "This is a trampoline. You can jump on it.",
+    Chain(
+        Manipulator({"inters.trampoline.rand": Random(1, 5)}),
+        Conditional(
+            "inters.trampoline.rand",
+            {
+                "5": Teleporter(
+                    balcony,
+                    "You jump so hard that you REACH THE BALCONY IN THE SECOND FLOOR!\n"
+                    "You launch in the air and fall to the floor of the balcony.\n"
+                ),
+                "!5": "You jump on the trampoline long enough until you are satisfied. "
+            }
+        )
+    )
+)
+painting = Interactive(
+    "painting",
+    "This is a painting of a fantasy dragon and a brave knight in an epic battle.",
+    "Your slide the painting to the side, and reveal a small hole in the wall,"
+    "approximately the size of a book.\n"
+    "This is a safe place to store your killing tools. "
+    "No one is supposed to find them here.\n"
+)
+bed = Interactive(
+    "bed",
+    "This is your bed. It is covered with among us bed sheet and blanket.",
+    "You enter the bed and close your eyes.\n"
+    "You lose your consciousness and find yourself in a dream.\n"
+    "Unfortunately, this section of the game hasn't been written yet!"
+)
 
 # Placing interactives
-living_room.interactives.add(couch)
-living_room.interactives.add(tv)
-bedroom.interactives.add(laptop)
+living_room.interactives.add(couch, tv)
+guest_room.interactives.add(guest_couch)
+bedroom.interactives.add(laptop, bed, painting)
+garden.interactives.add(trampoline)
 
 flags = {
     "player.isSitting": False,
     "inters.tv.isWorking": False,
+    "inters.trampoline.rand": 0,
     "flags.fbi": False,
     "fillers.fbi": "",
 }
@@ -231,22 +268,23 @@ events = {
         "player.isSitting",
         {
             "true": Manipulator(
-                "You get up from the couch.",
-                "player.isSitting",
-                False
+                {"player.isSitting": False},
+                "You get up from the couch."
             )
         }
+    ),
+    "inters.couch.sit": Manipulator(
+        {"player.isSitting": True},
+        "You sit on the couch."
     ),
     "room.leave": Chain(
         "@inters.couch.getUp",
     ),
-    "inters.tv.turnOff": Manipulator(
-        None, "inters.tv.isWorking", False
-    )
+    "inters.tv.turnOff": Manipulator({"inters.tv.isWorking": False})
 }
 
 # Setting engine
-engine = Engine(handler, bedroom)
+engine = Engine(handler, outside)
 engine.events = events
 engine.flags = flags
 engine.start()

@@ -1,6 +1,6 @@
 from Core import Room
 from Events import Event, CustomEvent, Conditional, Manipulator, Break
-from Events import Chain, NamedEvent, Prompt, PromptCarousel, Menu
+from Events import Chain, NamedEvent, Prompt, PromptCarousel, Menu, Teleporter
 import re
 
 
@@ -69,6 +69,8 @@ class Engine:
     def handle_event(self, wrapper):
         result = False
         event = wrapper.event
+        if isinstance(wrapper.next, Room):
+            self.handle_event(self.currentRoom.events["roomLeave"])
         if isinstance(event, Chain):
             for e in event.events:
                 self.handle_event(e)
@@ -76,12 +78,13 @@ class Engine:
             self.handle_event(event.get(self.flags[event.flag]))
         elif isinstance(event, Manipulator):
             self.handle_event(event.event)
-            self.flags[event.flag] = event.manipulate(self.flags[event.flag])
+            for flag in event.manipulators:
+                self.flags[flag] = event.manipulate(flag, self.flags[flag])
         elif isinstance(event, CustomEvent):
             self.custom_event(event.name)
         elif isinstance(event, NamedEvent):
             if event.name in self.events:
-                self.handle_event(Event(event=self.events[event.name]))
+                self.handle_event(Event(self.events[event.name]))
         elif isinstance(event, Prompt):
             prompt = self.parse_prompt(event.prompt)
             self.print(prompt)
@@ -91,18 +94,19 @@ class Engine:
         elif isinstance(event, Menu):
             self.show_menu(event)
             result = True
+        elif isinstance(event, Teleporter):
+            self.handle_event(event.event)
+            self.change_room(event.room, True)
         if isinstance(wrapper.next, Room):
             self.change_room(wrapper.next)
         return result
 
-    def teleport(self, room):
+    def change_room(self, room, trigger_leave=False):
+        if trigger_leave:
+            self.handle_event(self.currentRoom.events["roomLeave"])
         self.currentRoom = room
         self.handle_event(self.currentRoom.events["roomEnter"])
         self.show_prompt()
-
-    def change_room(self, room):
-        self.handle_event(self.currentRoom.events["roomLeave"])
-        self.teleport(room)
 
     def parse_prompt(self, prompt):
         if prompt.count("}") > 0 and prompt.count("{") > 0:
@@ -112,9 +116,14 @@ class Engine:
         return prompt
 
     def command_enter(self, _next):
+        found = False
         _map = self.currentRoom.map
         if _next in _map.get_all():
             self.handle_event(_map.get(_next))
+            found = True
+            Break
+        if not found:
+            self.print(f"No such location: '{_next}'.")
 
     def show_menu(self, menu):
         flag = True
@@ -127,7 +136,7 @@ class Engine:
                 user_input = input().strip()
                 if user_input == "":
                     continue
-                if number.match(user_input)is not None:
+                if number.match(user_input) is not None:
                     choice = int(user_input)
                     if 0 < choice <= len(menu.options):
                         choice -= 1
