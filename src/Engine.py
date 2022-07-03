@@ -1,5 +1,6 @@
-from Core import Prompt, PromptCarousel, Room
-from Events import Event, CustomEvent, Conditional, Manipulator, NamedEvent
+from Core import Room
+from Events import Event, CustomEvent, Conditional, Manipulator, Break
+from Events import Chain, NamedEvent, Prompt, PromptCarousel, Menu
 import re
 
 
@@ -48,6 +49,7 @@ class Engine:
         }
         self.flags = {}
         self.events = {}
+        self.last_input = ""
 
     def print(self, *args):
         print(*args)
@@ -65,8 +67,12 @@ class Engine:
             self.events_handler(event_name)
 
     def handle_event(self, wrapper):
+        result = False
         event = wrapper.event
-        if isinstance(event, Conditional):
+        if isinstance(event, Chain):
+            for e in event.events:
+                self.handle_event(e)
+        elif isinstance(event, Conditional):
             self.handle_event(event.get(self.flags[event.flag]))
         elif isinstance(event, Manipulator):
             self.handle_event(event.event)
@@ -77,20 +83,65 @@ class Engine:
             if event.name in self.events:
                 self.handle_event(Event(event=self.events[event.name]))
         elif isinstance(event, Prompt):
-            self.print(event.prompt)
+            prompt = self.parse_prompt(event.prompt)
+            self.print(prompt)
         elif isinstance(event, PromptCarousel):
-            self.print(event.next())
+            prompt = self.parse_prompt(event.next())
+            self.print(prompt)
+        elif isinstance(event, Menu):
+            self.show_menu(event)
+            result = True
         if isinstance(wrapper.next, Room):
-            self.set_current_room(wrapper.next)
+            self.change_room(wrapper.next)
+        return result
 
-    def set_current_room(self, room):
+    def teleport(self, room):
         self.currentRoom = room
+        self.handle_event(self.currentRoom.events["roomEnter"])
         self.show_prompt()
+
+    def change_room(self, room):
+        self.handle_event(self.currentRoom.events["roomLeave"])
+        self.teleport(room)
+
+    def parse_prompt(self, prompt):
+        if prompt.count("}") > 0 and prompt.count("{") > 0:
+            for (name, value) in self.flags.items():
+                filler = "{" + str(name) + "}"
+                prompt = prompt.replace(filler, str(value))
+        return prompt
 
     def command_enter(self, _next):
         _map = self.currentRoom.map
         if _next in _map.get_all():
             self.handle_event(_map.get(_next))
+
+    def show_menu(self, menu):
+        flag = True
+        number = re.compile(r"\d+$")
+        while flag:
+            self.handle_event(menu.starter)
+            for i in range(len(menu.options)):
+                self.print(f"{i+1}. {self.parse_prompt(tuple(menu.options.keys())[i])}")
+            while True:
+                user_input = input().strip()
+                if user_input == "":
+                    continue
+                if number.match(user_input)is not None:
+                    choice = int(user_input)
+                    if 0 < choice <= len(menu.options):
+                        choice -= 1
+                        break
+                self.print("Please enter a valid choice.")
+            event = tuple(menu.options.values())[choice]
+            if not menu.repeat:
+                flag = False
+            if isinstance(event.event, Break):
+                flag = False
+                event = event.event.event
+            self.handle_event(event)
+            if flag:
+                self.print()
 
     def command_go(self, _next):
         compass = self.currentRoom.compass
@@ -133,7 +184,9 @@ class Engine:
         if interactive is None:
             self.print(f"No such object: '{_next}'.")
         else:
-            self.print(f"You look at the {_next}.\n{interactive.description}")
+            self.print(f"You look at the {_next}.")
+            self.handle_event(interactive.description)
+            return True
 
     def command_map(self, _next=""):
         room = self.currentRoom
@@ -153,15 +206,14 @@ class Engine:
             event = room.interactives.get(_next).events["activate"]
             if isinstance(event, Event):
                 self.handle_event(event)
-            else:
-                print("Warning 001")
+                return True
         else:
             self.print(f"No such interactive: '{_next}'.")
 
     def show_prompt(self):
-        self.print(self.currentRoom.description)
-        self.command_map()
-
+        self.handle_event(self.currentRoom.description)
+        if self.currentRoom.show_map:
+            self.command_map()
         self.handle_input()
 
     def handle_input(self):
@@ -171,6 +223,9 @@ class Engine:
             user_input = re.sub(" +", " ", user_input)
             if user_input == "":
                 continue
+            elif user_input == "_":
+                user_input = self.last_input
+            self.last_input = user_input
             if user_input in self.match:
                 self.match[user_input]()
                 break

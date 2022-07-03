@@ -28,6 +28,14 @@ class NamedEvent:
         self.name = name
 
 
+class Chain:
+    def __init__(self, *args):
+        args = list(args)
+        for i in range(len(args)):
+            args[i] = Event(event=args[i])
+        self.events = args
+
+
 class Conditional:
     def __init__(self, flag_name, options):
         self.flag = flag_name
@@ -156,6 +164,15 @@ class PromptCarousel:
         return self.prompts[current]
 
 
+class Break:
+    def __init__(self, event=None):
+        self.event = Event(event=event)
+
+
 class Menu:
-    def __init__(self):
-        pass
+    def __init__(self, starter, options, repeat=False):
+        self.starter = Event(event=starter)
+        self.repeat = repeat
+        self.options = {}
+        for (name, value) in options.items():
+            self.options[name] = Event(event=value)
