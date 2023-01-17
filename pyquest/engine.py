@@ -1,44 +1,26 @@
-from Core import Room
-from Events import Event, CustomEvent, Conditional, Manipulator, Break, Lock
-from Events import Chain, NamedEvent, Prompt, PromptCarousel, Menu, Teleporter
+from .events import Chain, NamedEvent, Prompt, PromptCarousel, Menu, Teleporter
+from .events import Event, CustomEvent, Conditional, Manipulator, Break, Lock
+from .core import Room
+from .config import defaults
 import re
 
 
+class Printer:
+    def __init__(self):
+        pass
+
+    def print(self, *args):
+        print(*args)
+
+
 class Engine:
-    def __init__(self, events_handler, starting_room):
+    def __init__(self, events_handler: callable, starting_room: Room):
         self.currentRoom = starting_room
-        self.events_handler = events_handler
-        self.prompts = {
-            "start": "Welcome to SaharSword\n"
-                     "Type 'help' to get a list of valid commands.\n",
-            "help": "Type 'help [command]' to get info on a specific command.\n"
-                    "List of available commands:",
-            "inputError": "Unknown action or keyword.",
-        }
+        self.eventHandler = events_handler
+        self.printer = Printer()
+        self.run = True
+
         self.commands = {
-            "go": "Move to a certain direction.\n"
-                  "Valid directions: north, south, west, east, up, down, in,"
-                  " out.\nSyntax: go [direction]",
-            "enter": "Enter a certain location. "
-                     "To see a list of locations, use 'map' command.\n"
-                     "Usage: 'enter [locationName]'.",
-            "look": "Look at the room or a specific item. "
-                    "To look at an item, type the item's name.\n"
-                    "Syntax: look [item]",
-            "map": "Display a list of all locations and directions "
-                   "you can go to.\n"
-                   "Identical commands: 'locations', 'directions'",
-            "use": "Activate an interactive. Use 'map' command to see a list of "
-                   "all interactives.\n Syntax: 'use [interactiveName]'."
-                   "\nIdentical commands: 'activate'.",
-            "inventory": "See the contents of your inventory. "
-                         "Identical commands: 'backpack', 'i'."
-        }
-        self.match = {
-            "exit": self.quit,
-            "quit": self.quit,
-        }
-        self.keywords = {
             "go": self.command_go,
             "enter": self.command_enter,
             "help": self.command_help,
@@ -46,31 +28,63 @@ class Engine:
             "activate": self.command_use,
             "look": self.command_look,
             "map": self.command_map,
+            "quit": self.quit,
+        }
+        self.aliases = {
+            "exit": "quit",
+            "inspect": "look",
+            "locations": "map"
         }
         self.flags = {}
         self.events = {}
         self.last_input = ""
         self.prompt = False
 
-    def print(self, *args):
-        print(*args)
+    def render(self, namespace, name, *args, output=True):
+        valid_namespaces = ("prompts", "errors", "commands")
+        if namespace not in valid_namespaces:
+            namespace += "s"
+        if namespace in valid_namespaces:
+            text = defaults.data[namespace][name]
+            if len(args) > 0:
+                text = text.format(*args)
+            if output:
+                self.print(text)
+            return text
 
-    def quit(self):
-        self.print("Goodbye!")
-        exit(0)
+    def print(self, *args: str):
+        if len(args) > 0 and type(args[0]) == str and args[0].startswith("$"):
+            base = defaults.get(args[0])
+            if base is None:
+                self.printer.print(*args)
+            else:
+                if len(args) > 1:
+                    args = args[1:]
+                    self.printer.print(base.format(*args))
+                else:
+                    self.printer.print(base)
+        else:
+            self.printer.print(*args)
 
+    def quit(self, _next=""):
+        if _next in ("game", ""):
+            self.render("prompt", "game.quit")
+            self.run = False
+        else:
+            self.render("error", "input.invalid")
+        
     def custom_event(self, event_name):
-        if type(self.events_handler) == dict:
-            if event_name in self.events_handler:
-                if callable(self.events_handler[event_name]):
-                    self.events_handler[event_name]()
-        elif callable(self.events_handler):
-            self.events_handler(event_name)
+        if type(self.eventHandler) == dict:
+            if event_name in self.eventHandler:
+                if callable(self.eventHandler[event_name]):
+                    self.eventHandler[event_name]()
+        elif callable(self.eventHandler):
+            self.eventHandler(event_name)
 
     def handle_event(self, wrapper):
         event = wrapper.event
         if isinstance(wrapper.next, Room):
-            self.handle_event(self.currentRoom.events["roomLeave"])
+            self.handle_event(self.currentRoom.events["room.leave"])
         if isinstance(event, Chain):
             for e in event.events:
                 self.handle_event(e)
@@ -111,9 +125,9 @@ class Engine:
 
     def change_room(self, room, trigger_leave=False):
         if trigger_leave:
-            self.handle_event(self.currentRoom.events["roomLeave"])
+            self.handle_event(self.currentRoom.events["room.leave"])
         self.currentRoom = room
-        self.handle_event(self.currentRoom.events["roomEnter"])
+        self.handle_event(self.currentRoom.events["room.enter"])
         self.show_prompt()
 
     def parse_prompt(self, prompt):
@@ -123,19 +137,10 @@ class Engine:
                 prompt = prompt.replace(filler, str(value))
         return prompt
 
-    def command_enter(self, _next):
-        found = False
-        _map = self.currentRoom.map
-        if _next in _map.get_all():
-            self.handle_event(_map.get(_next))
-            self.prompt = True
-            found = True
-        if not found:
-            self.print(f"No such location: '{_next}'.")
-
     def show_menu(self, menu):
         flag = True
         number = re.compile(r"\d+$")
+        choice = 0
         while flag:
             self.handle_event(menu.starter)
             for i in range(len(menu.options)):
@@ -149,7 +154,7 @@ class Engine:
                     if 0 < choice <= len(menu.options):
                         choice -= 1
                         break
-                self.print("Please enter a valid choice.")
+                self.render("error", "menu.choice.invalid")
             event = tuple(menu.options.values())[choice]
             if not menu.repeat:
                 flag = False
@@ -160,38 +165,56 @@ class Engine:
             if flag:
                 self.print()
 
+    def command_enter(self, _next):
+        found = False
+        _map = self.currentRoom.map
+        if _next in _map.get_all():
+            event = _map.get(_next)
+            if event.event is None:
+                event.event = Prompt(self.render("prompt", "map.move", _next, output=False))
+            self.handle_event(event)
+
+            self.handle_event(_map.get(_next))
+            self.prompt = True
+            found = True
+        if not found:
+            self.render("error", "map.notFound", _next)
+
     def command_go(self, _next):
         compass = self.currentRoom.compass
         result = compass.get(_next)
         if result is None:
-            self.print("You can't go there!")
+            self.render("error", "compass.direction.invalid")
             self.prompt = True
         elif result is False:
-            self.print(f"No such direction: '{_next}'.")
+            self.render("error", "compass.direction.notFound", _next)
             self.prompt = True
         else:
-            self.handle_event(compass.get(_next))
+            event = compass.get(_next)
+            if event.event is None:
+                event.event = Prompt(self.render("prompt", "compass.move", _next, output=False))
+            self.handle_event(event)
 
     def command_help(self, _next):
         if _next == "":
-            self.print(self.prompts["help"])
-            for command in self.commands:
+            self.render("prompts", "game.help")
+            for command in defaults.commands:
                 self.print("- " + command)
         else:
             found = False
-            for command in self.commands:
+            for command in defaults.commands:
                 if _next == command:
-                    self.print(f"---- {command}: Command Description ----\n"
-                               f"{self.commands[command]}")
+                    self.render("prompt", "help.command.description", command.title())
+                    self.print(defaults.commands[command])
                     found = True
                     break
             if not found:
-                self.print(f"No such command: '{_next}'.")
+                self.render("prompt", "help.command.notFound", _next)
         self.prompt = True
 
     def command_look(self, _next):
         if _next in ("around", ""):
-            self.print("You look around.")
+            self.render("prompt", "room.inspect")
             self.prompt = True
             return
         triggers = ["on the", "at the", "at", "on"]
@@ -200,33 +223,41 @@ class Engine:
                 _next = _next.split(trigger, 1)[1].strip()
         interactive = self.currentRoom.interactives.get(_next)
         if interactive is None:
-            self.print(f"No such object: '{_next}'.")
+            self.render("error", "interactive.notFound", _next)
         else:
-            self.print(f"You look at the {_next}.")
+            self.render("prompt", "game.inspect", _next)
             self.handle_event(interactive.description)
             self.prompt = True
 
     def command_map(self, _next=""):
         room = self.currentRoom
-        if len(room.compass) > 0:
-            self.print("You can go: " + ", ".join(room.compass.get_all(True)))
-        if len(room.map) > 0:
-            self.print("You can enter: " + ", ".join(room.map.get_all(True)))
-        if len(room.interactives) > 0:
-            self.print("You can activate: " + ", ".join(room.interactives.get_all(True)))
-        if len(room.items) > 0:
-            self.print("You can take: " + ", ".join(room.items.get_all(True)))
+        if room.is_empty():
+            self.render("prompt", "room.empty")
+        else:
+            if len(room.compass) > 0:
+                locations = ", ".join(room.compass.get_all(True))
+                self.render("prompt", "room.contents.compass", locations)
+            if len(room.map) > 0:
+                locations = ", ".join(room.map.get_all(True))
+                self.render("prompt", "room.contents.map", locations)
+
+            if len(room.interactives) > 0:
+                locations = ", ".join(room.interactives.get_all(True))
+                self.render("prompt", "room.contents.interactives", locations)
+            if len(room.items) > 0:
+                locations = ", ".join(room.items.get_all(True))
+                self.render("prompt", "room.contents.items", locations)
 
     def command_use(self, _next):
         room = self.currentRoom
         interactives = room.interactives.get_all()
         if _next in interactives:
-            event = room.interactives.get(_next).events["activate"]
+            event = room.interactives.get(_next).events["interactive.activate"]
             if isinstance(event, Event):
                 self.handle_event(event)
                 self.prompt = True
         else:
-            self.print(f"No such interactive: '{_next}'.")
+            self.render("error", "interactive.notFound", _next)
 
     def show_prompt(self):
         self.prompt = False
@@ -236,33 +267,51 @@ class Engine:
         self.handle_input()
 
     def handle_input(self):
+        # Allows quitting the game
+        if not self.run:
+            return
+
+        # User input loop
         while True:
+            # Taking user input
             user_input = input().lower().strip()
+            # Building a list of words
             user_input = re.sub(" +", " ", user_input)
+            # If there is no input, continue
             if user_input == "":
                 continue
+            # Special syntax for repeating the last input
             elif user_input == "_":
                 user_input = self.last_input
             self.last_input = user_input
-            if user_input in self.match:
-                self.match[user_input]()
-                break
+            # command = command, the first word
+            # _next   = arguments, the following words
             words = user_input.split(" ", 1)
-            keyword = words[0]
+            command = words[0]
             _next = ""
             if len(words) > 1:
                 _next = words[1]
-            if keyword in self.keywords:
-                self.keywords[keyword](_next)
+            # If input is a valid command, execute that command (help, map, etc.)
+            if command in self.commands:
+                self.commands[command](_next)
                 break
+            # Command can also be an alias
+            elif command in self.aliases:
+                self.commands[self.aliases[command]](_next)
+                break
+            # Otherwise, show an input error
             else:
-                self.print(self.prompts["inputError"])
+                self.render("error", "input.invalid")
+        # Prints the current room's prompt if needed
         if self.prompt:
             self.print()
             self.show_prompt()
+        # Otherwise, repeats this very function
         else:
             self.handle_input()
 
     def start(self):
-        self.print(self.prompts["start"])
+        # Printing the starting prompt
+        self.render("prompt", "game.start")
+        # Starting mainloop
         self.show_prompt()
