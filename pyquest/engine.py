@@ -14,9 +14,10 @@ class Printer:
 
 
 class Engine:
-    def __init__(self, events_handler: callable, starting_room: Room):
+    def __init__(self, events_handler: callable = None, starting_room: Room = None, npc_handler: callable = None):
         self.currentRoom = starting_room
         self.eventHandler = events_handler
+        self.npcHandler = npc_handler
         self.printer = Printer()
         self.run = True
 
@@ -28,12 +29,14 @@ class Engine:
             "activate": self.command_use,
             "look": self.command_look,
             "map": self.command_map,
+            "talk": self.command_talk,
             "quit": self.quit,
         }
         self.aliases = {
             "exit": "quit",
             "inspect": "look",
-            "locations": "map"
+            "locations": "map",
+            "chat": "talk"
         }
         self.flags = {}
         self.events = {}
@@ -66,7 +69,7 @@ class Engine:
         else:
             self.printer.print(*args)
 
-    def quit(self, _next=""):
+    def quit(self, _next: str = ""):
         if _next in ("game", ""):
             self.render("prompt", "game.quit")
             self.run = False
@@ -165,7 +168,7 @@ class Engine:
             if flag:
                 self.print()
 
-    def command_enter(self, _next):
+    def command_enter(self, _next: str):
         found = False
         _map = self.currentRoom.map
         if _next in _map.get_all():
@@ -180,7 +183,7 @@ class Engine:
         if not found:
             self.render("error", "map.notFound", _next)
 
-    def command_go(self, _next):
+    def command_go(self, _next: str):
         compass = self.currentRoom.compass
         result = compass.get(_next)
         if result is None:
@@ -195,7 +198,7 @@ class Engine:
                 event.event = Prompt(self.render("prompt", "compass.move", _next, output=False))
             self.handle_event(event)
 
-    def command_help(self, _next):
+    def command_help(self, _next: str):
         if _next == "":
             self.render("prompts", "game.help")
             for command in defaults.commands:
@@ -212,7 +215,7 @@ class Engine:
                 self.render("prompt", "help.command.notFound", _next)
         self.prompt = True
 
-    def command_look(self, _next):
+    def command_look(self, _next: str):
         if _next in ("around", ""):
             self.render("prompt", "room.inspect")
             self.prompt = True
@@ -229,7 +232,7 @@ class Engine:
             self.handle_event(interactive.description)
             self.prompt = True
 
-    def command_map(self, _next=""):
+    def command_map(self, _next: str = ""):
         room = self.currentRoom
         if room.is_empty():
             self.render("prompt", "room.empty")
@@ -240,7 +243,9 @@ class Engine:
             if len(room.map) > 0:
                 locations = ", ".join(room.map.get_all(True))
                 self.render("prompt", "room.contents.map", locations)
-
+            if len(room.npcs) > 0:
+                locations = ", ".join(room.npcs.get_all(True))
+                self.render("prompt", "room.contents.npcs", locations)
             if len(room.interactives) > 0:
                 locations = ", ".join(room.interactives.get_all(True))
                 self.render("prompt", "room.contents.interactives", locations)
@@ -248,9 +253,10 @@ class Engine:
                 locations = ", ".join(room.items.get_all(True))
                 self.render("prompt", "room.contents.items", locations)
 
-    def command_use(self, _next):
+    def command_use(self, _next: str):
         room = self.currentRoom
         interactives = room.interactives.get_all()
+        print(interactives)
         if _next in interactives:
             event = room.interactives.get(_next).events["interactive.activate"]
             if isinstance(event, Event):
@@ -259,10 +265,28 @@ class Engine:
         else:
             self.render("error", "interactive.notFound", _next)
 
+    def command_talk(self, _next: str):
+        removals = ("to", "with", "the")
+        for entry in removals:
+            entry += " "
+            if _next.startswith(entry):
+                _next = _next.replace(entry, "", 1)
+        npc = self.currentRoom.npcs.get(_next)
+        if npc is None:
+            self.render("error", "npc.notFound", _next)
+        else:
+            self.print(npc.prompt())
+            text = None
+            while text != "":
+                if text is not None:
+                    self.print(self.npcHandler(npc, text))
+                text = input(self.render("prompt", "npc.conversation", output=False))
+            self.prompt = True
+
     def show_prompt(self):
         self.prompt = False
         self.handle_event(self.currentRoom.description)
-        if self.currentRoom.show_map:
+        if self.currentRoom.showLocations:
             self.command_map()
         self.handle_input()
 
@@ -310,7 +334,10 @@ class Engine:
         else:
             self.handle_input()
 
-    def start(self):
+    def start(self, starting_room: Room = None) -> None:
+        # Setting starting room
+        if starting_room is not None:
+            self.currentRoom = starting_room
         # Printing the starting prompt
         self.render("prompt", "game.start")
         # Starting mainloop

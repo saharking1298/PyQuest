@@ -115,6 +115,45 @@ class _Interactives:
                 del self.data[i]
 
 
+class _NPCS:
+    def __init__(self):
+        self.data = []
+
+    def __len__(self):
+        return len(self.get_all())
+
+    def add(self, *npcs):
+        for npc in npcs:
+            added = False
+            for i in range(len(self.data)):
+                if self.data[i].name == npc.name:
+                    self.data[i] = npc
+                    added = True
+            if not added:
+                self.data.append(npc)
+
+    def get(self, name):
+        name = name.lower()
+        for npc in self.data:
+            if npc.name.lower() == name:
+                return npc
+
+    def get_all(self, prompt=False):
+        result = []
+        if prompt:
+            for npc in self.data:
+                result.append(f"{npc.name} ({npc.profession}, {npc.gender[0]})")
+        else:
+            for npc in self.data:
+                result.append(npc.name)
+        return result
+
+    def remove(self, name):
+        for i in range(len(self.data)):
+            if self.data[i].name == name:
+                del self.data[i]
+
+
 class _Items:
     def __init__(self):
         self.data = []
@@ -151,18 +190,43 @@ class Interactive:
         self.events[name] = Event(value)
 
 
+class NPC:
+    def __init__(self, name: str, gender: str, profession: str, traits: list = None):
+        self.name = name
+        self.gender = gender
+        self.profession = profession
+        if traits is None:
+            traits = []
+        self.traits = traits
+
+    def prompt(self) -> str:
+        pronouns = {"male": "He", "female": "She"}
+        return defaults.prompts["npc.description"].format(
+            name=self.name,
+            role=self.profession,
+            pronoun=pronouns[self.gender],
+            traits=", ".join(self.traits)
+        )
+
+
 class Room:
-    def __init__(self, description, enter=None, leave=None, show_map=False):
+    def __init__(self, description, enter=None, leave=None, show_locations=False):
         self.description = Event(description)
+        self.metadata = None
         self.compass = _Compass()
         self.map = _Map()
         self.interactives = _Interactives()
         self.items = _Items()
-        self.show_map = show_map
+        self.npcs = _NPCS()
+        self.showLocations = show_locations
         self.events = {
             "room.enter": Event(enter),
             "room.leave": Event(leave),
         }
 
     def is_empty(self):
-        return len(self.map) == 0 and len(self.compass) == 0 and len(self.interactives) == 0 and len(self.items) == 0
+        lists = (self.map, self.compass, self.interactives, self.items, self.npcs)
+        for item in lists:
+            if len(item) > 0:
+                return False
+        return True

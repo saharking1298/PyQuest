@@ -12,9 +12,12 @@
     "room.contents.map": "You can enter: {0}",
     "room.contents.interactives": "You can activate: {0}",
     "room.contents.items": "You can take: {0}",
+    "room.contents.npcs": "You can talk to: {0}",
     "interactive.description": "It is nothing out if the ordinary.",
     "map.move": "You enter the {0}.",
-    "compass.move": "You go {0}."
+    "compass.move": "You go {0}.",
+    "npc.conversation": ">>> ",
+    "npc.description": "You are facing {name}, a {role} at heart.\n{pronoun} is known to be: {traits}.\n"
   },
   "errors": {
     "input.invalid": "Unknown action or keyword.",
@@ -22,7 +25,8 @@
     "map.notFound": "No such location: '{0}'.",
     "compass.direction.notFound": "No such direction: '{0}'.",
     "compass.direction.invalid": "You can't go there!",
-    "interactive.notFound": "No such interactive: '{0}'."
+    "interactive.notFound": "No such interactive: '{0}'.",
+    "npc.notFound": "No such NPC: '{0}'"
   },
   "commands": {
     "go": "Move to a certain direction.\nValid directions: north, south, west, east, up, down, in, out.\nUsage: go [direction]",
@@ -30,6 +34,7 @@
     "look": "Look at the room or inspect a specific item.\nUsage: look [item]",
     "map": "Display a list of all locations and directions you can go to.\nIdentical commands: 'locations', 'directions'",
     "use": "Activate an interactive. Use 'map' command to get a list of all interactives.\nUsage: 'use [interactive]'.\nIdentical commands: 'activate'.",
-    "help": "Type 'help [command]' to read information about a specific command."
+    "help": "Type 'help [command]' to read information about a specific command.",
+    "talk": "Type 'talk [NPC]' to chat with an NPC."
   }
 }
